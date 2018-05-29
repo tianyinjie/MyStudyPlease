@@ -1,0 +1,54 @@
+import urllib.request
+from bs4 import BeautifulSoup
+import re
+
+url = 'http://zb.58.com/jianzhi.shtml'
+headers = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36'
+}
+zhaopinxinxi = []
+
+def get_headpage(url,headers):
+    req = urllib.request.Request(url,headers=headers)
+    rep = urllib.request.urlopen(req)
+    text = rep.read()
+    xxx = BeautifulSoup(text, 'html.parser')
+    job_urls = xxx.findAll('a', attrs={'target': "_blank"})
+    for job_url in job_urls:
+        parttimejob_url = job_url['href']
+        url = urllib.request.urljoin(url, parttimejob_url)
+        get_parttime_job_page(url)
+
+
+def get_parttime_job_page(url) :
+    text = urllib.request.urlopen(url).read()
+    string = BeautifulSoup(text, 'html.parser')
+    informations = string.find_all('div', attrs={'class': 'item clearfix'})
+    for information in informations:
+        name = re.findall('<div class="item1"><h2><a href=".*?">(.*?)</a></h2>', str(information), re.S)
+        gongzi = re.findall('<div class="price"><span class="qian"><em>(.*?)</em>(.*?)</span>', str(information), re.S)
+        yyy = list(enumerate(information.descendants))
+        company =  yyy[11][1]
+        location = yyy[7][1]
+
+        xinxi = {
+            '招聘内容': name[0].strip(),
+            '公司':company.strip(),
+            '工作地点': location,
+            '工资': gongzi[0][0] + gongzi[0][1]
+        }
+        print(xinxi)
+        print("---------------")
+
+
+if __name__ == '__main__':
+    get_headpage(url, headers)
+
+
+
+
+
+
+
+
+
