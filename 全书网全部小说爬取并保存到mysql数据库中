@@ -1,0 +1,106 @@
+import urllib.request
+import re
+import random
+import pymysql
+from bs4 import BeautifulSoup
+
+class sql(object):
+    conn = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="123456",
+        db="novel_database",
+        port=3306,
+        charset='utf8')
+    def add_novel(self,novel_name,novel_type,novel_author):
+        cur = self.conn.cursor()
+        cur.execute("insert into all_novel_information(novel_name,novel_type,novel_author) values('%s','%s','%s')"%(novel_name,novel_type,novel_author))#执行sql语句
+        cur.close()
+        self.conn.commit()
+
+    def add_chapter(self,chapter_name,book_name,chapter_content):
+        cur = self.conn.cursor()
+        cur.execute("insert into book_information(chapter_name,book_name,chapter_content) values('%s','%s','%s')" % (
+            chapter_name, book_name, chapter_content))  # 执行sql语句
+        cur.close()
+        self.conn.commit()
+
+
+
+mysql = sql()
+
+url = 'http://www.xs4.cc/map/1.html'#通过网站地图来爬取所有的小说
+USER_AGENT = [
+    'Mozilla/5.0 (iPhone; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1C28 Safari/419.3',
+    'Mozilla / 5.0(Windows NT 10.0;Win64;x64) AppleWebKit / 537.36(KHTML, likeGecko) Chrome / 66.0.3359.181Safari / 537.36',
+    'Mozilla/5.0 (iPhone; U; CPU iPhone OS 2_0 like Mac OS X; ja-jp) AppleWebKit/525.18.1 (KHTML, like Gecko) Version/3.1.1 Mobile/5A347 Safari/52',
+    'Mozilla/5.0 (iPhone; U; CPU iPhone OS 2_0 like Mac OS X; ja-jp) AppleWebKit/525.18.1 (KHTML, like Gecko) Version/3.1.1 Mobile/5A345 Safari/525.20',
+    'Mozilla/5.0 (iPhone; U; CPU iPhone OS 2_0_1 like Mac OS X; ja-jp) AppleWebKit/525.18.1 (KHTML, like Gecko) Version/3.1.1 Mobile/5B108 Safari/525.20',
+    'Mozilla/5.0 (iPhone; U; CPU iPhone OS 3_1_3 like Mac OS X; ja-jp) AppleWebKit/528.18 (KHTML, like Gecko) Version/4.0 Mobile/7E18 Safari/528.16',
+    'Mozilla/5.0 (iPhone; U; CPU iPhone OS 4_0_1 like Mac OS X; ja-jp) AppleWebKit/532.9 (KHTML, like Gecko) Version/4.0.5 Mobile/8A306 Safari/6531.22.7',
+    'Mozilla/5.0 (Linux; U; Android 3.0.1; ja-jp; MZ604 Build/H.6.2-20) AppleWebKit/534.13 (KHTML, like Gecko) Version/4.0 Safari/534.13',
+    'Mozilla/5.0 (compatible; MSIE 9.0; Windows Phone OS 7.5; Trident/5.0; IEMobile/9.0; FujitsuToshibaMobileCommun; IS12T; KDDI)'
+]
+header = {
+            'User-Agent': random.choice(USER_AGENT)
+        }
+def get_alltype_page(url,headers):
+    req = urllib.request.Request(url,headers = headers)
+    rep = urllib.request.urlopen(req).read().decode('utf-8')
+    informations = re.findall('<a href="(\d+.html)" class="hottext">(.*?)</a>',rep,re.S)
+    for type_url,type_name in informations:
+        type_url = urllib.request.urljoin(url,type_url)#地图上全部的11个类型的网址
+        get_allbook_url(type_url,headers,type_name)
+        break
+
+
+
+def get_allbook_url(page_url,headers,type_name):  #type_anme：书的类型
+    home_url = 'http://www.xs4.cc'#主页的url，用于拼接
+    req = urllib.request.Request(page_url,headers=headers)
+    rep = urllib.request.urlopen(req).read().decode('utf-8')
+    books_list = re.findall(r'<a href="(/book/\d+/\d+/)" target="_blank">(.*?)</a>',rep,re.S)
+    for book_url,book_name in books_list:
+        book_url = urllib.request.urljoin(home_url, book_url)
+        get_book_chapter(book_url,headers,home_url,book_name,type_name)
+
+
+
+def get_book_chapter(book_url,headers,home_url,book_name,type_name):
+    req = urllib.request.Request(book_url, headers=headers)
+    rep = urllib.request.urlopen(req).read().decode('utf-8')
+    chapter_imformation = re.findall(r'<li><a href="(/book/\d+/\d+.html)" title.*?>(.*?)</a></li>',rep,re.S)
+    author = re.findall('<a href="/v/.*?">(.*?)</a>',rep,re.S)[0]
+    print(book_name)
+    mysql.add_novel(book_name,type_name,author)
+    for chapter_url,chapter_name in chapter_imformation:
+        chapter_url = urllib.request.urljoin(home_url,chapter_url)
+        content = get_chapter_content(chapter_url,headers)##每一个章节内容
+        print(chapter_name)
+        mysql.add_chapter(chapter_name,book_name,content)
+
+
+
+
+
+def get_chapter_content(chapter_url,headers):#每一个章节内容
+    req = urllib.request.Request(chapter_url, headers=headers)
+    try:
+        rep = urllib.request.urlopen(req).read().decode('utf-8')
+    except:
+        rep = urllib.request.urlopen(req).read()
+    soup = BeautifulSoup(rep,'html.parser')
+    content = soup.find(id='content').get_text()
+    return content
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+
+        #print(book_id,book_type)
+    get_alltype_page(url,header)
