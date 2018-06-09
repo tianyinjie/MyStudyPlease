@@ -12,20 +12,18 @@ class sql(object):
         db="novel_database",
         port=3306,
         charset='utf8')
-    def add_novel(self,novel_name,novel_type,novel_author):
+    def add_novel(self,novel_name,novel_type,novel_author,book_id):
         cur = self.conn.cursor()
-        cur.execute("insert into all_novel_information(novel_name,novel_type,novel_author) values('%s','%s','%s')"%(novel_name,novel_type,novel_author))#执行sql语句
+        cur.execute("insert into all_novel_information(novel_name,novel_type,novel_author,book_id) values('%s','%s','%s',%s)"%(novel_name,novel_type,novel_author,book_id))#执行sql语句
         cur.close()
         self.conn.commit()
 
-    def add_chapter(self,chapter_name,book_name,chapter_content):
+    def add_chapter(self,chapter_name,book_name,chapter_content,book_id):
         cur = self.conn.cursor()
-        cur.execute("insert into book_information(chapter_name,book_name,chapter_content) values('%s','%s','%s')" % (
-            chapter_name, book_name, chapter_content))  # 执行sql语句
+        cur.execute("insert into book_information(chapter_name,book_name,chapter_content,book_id) values('%s','%s','%s',%s)" % (
+            chapter_name, book_name, chapter_content,book_id))  # 执行sql语句
         cur.close()
         self.conn.commit()
-
-
 
 mysql = sql()
 
@@ -45,52 +43,60 @@ header = {
             'User-Agent': random.choice(USER_AGENT)
         }
 def get_alltype_page(url,headers):
-    req = urllib.request.Request(url,headers = headers)
-    rep = urllib.request.urlopen(req).read().decode('utf-8')
-    informations = re.findall('<a href="(\d+.html)" class="hottext">(.*?)</a>',rep,re.S)
-    for type_url,type_name in informations:
-        type_url = urllib.request.urljoin(url,type_url)#地图上全部的11个类型的网址
-        get_allbook_url(type_url,headers,type_name)
-        break
-
-
-
-def get_allbook_url(page_url,headers,type_name):  #type_anme：书的类型
-    home_url = 'http://www.xs4.cc'#主页的url，用于拼接
-    req = urllib.request.Request(page_url,headers=headers)
-    rep = urllib.request.urlopen(req).read().decode('utf-8')
-    books_list = re.findall(r'<a href="(/book/\d+/\d+/)" target="_blank">(.*?)</a>',rep,re.S)
-    for book_url,book_name in books_list:
-        book_url = urllib.request.urljoin(home_url, book_url)
-        get_book_chapter(book_url,headers,home_url,book_name,type_name)
-
-
-
-def get_book_chapter(book_url,headers,home_url,book_name,type_name):
-    req = urllib.request.Request(book_url, headers=headers)
-    rep = urllib.request.urlopen(req).read().decode('utf-8')
-    chapter_imformation = re.findall(r'<li><a href="(/book/\d+/\d+.html)" title.*?>(.*?)</a></li>',rep,re.S)
-    author = re.findall('<a href="/v/.*?">(.*?)</a>',rep,re.S)[0]
-    print(book_name)
-    mysql.add_novel(book_name,type_name,author)
-    for chapter_url,chapter_name in chapter_imformation:
-        chapter_url = urllib.request.urljoin(home_url,chapter_url)
-        content = get_chapter_content(chapter_url,headers)##每一个章节内容
-        print(chapter_name)
-        mysql.add_chapter(chapter_name,book_name,content)
-
-
-
-
-
-def get_chapter_content(chapter_url,headers):#每一个章节内容
-    req = urllib.request.Request(chapter_url, headers=headers)
     try:
+        req = urllib.request.Request(url,headers = headers)
         rep = urllib.request.urlopen(req).read().decode('utf-8')
     except:
-        rep = urllib.request.urlopen(req).read()
-    soup = BeautifulSoup(rep,'html.parser')
-    content = soup.find(id='content').get_text()
+        print("请求网页错误")
+    informations = re.findall('<a href="(\d+.html)" class="hottext">(.*?)</a>', rep, re.S)
+    if informations:
+        for type_url, type_name in informations:
+            type_url = urllib.request.urljoin(url, type_url)  # 地图上全部的11个类型的网址
+            get_allbook_url(type_url, headers, type_name)
+            break
+    else:
+        print("没有找到链接")
+
+def get_allbook_url(page_url,headers,type_name):  #type_anme：书的类型  #每一种类型下所有的书的链接
+    home_url = 'http://www.xs4.cc'#主页的url，用于拼接
+    try:
+        req = urllib.request.Request(page_url,headers=headers)
+        rep = urllib.request.urlopen(req).read().decode('utf-8')
+    except:
+        print("请求书链接错误")
+    books_list = re.findall(r'<a href="(/book/\d+/(\d+)/)" target="_blank">(.*?)</a>', rep, re.S)
+    if books_list:
+        for book_url, book_id, book_name in books_list:
+            book_url = urllib.request.urljoin(home_url, book_url)
+            get_book_chapter(book_url, headers, home_url, int(book_id), book_name, type_name)
+    else:
+        print("没有找到对应的书的链接")
+
+def get_book_chapter(book_url,headers,home_url,book_id,book_name,type_name): #章节目录页面
+    try:
+        req = urllib.request.Request(book_url, headers=headers)
+        rep = urllib.request.urlopen(req).read().decode('utf-8')
+    except:
+        print("请求章节页面错误")
+    chapter_imformation = re.findall(r'<li><a href="(/book/\d+/\d+.html)" title.*?>(.*?)</a></li>', rep, re.S)
+    author = re.findall('<a href="/v/.*?">(.*?)</a>', rep, re.S)[0]
+    print("正在下载:", book_name)
+    mysql.add_novel(book_name, type_name, author, book_id)
+    for chapter_url, chapter_name in chapter_imformation:
+        chapter_url = urllib.request.urljoin(home_url, chapter_url)
+        content = get_chapter_content(chapter_url, headers)  # 每一个章节内容
+        print("正在下载:", chapter_name)
+        mysql.add_chapter(chapter_name, book_name, content, book_id)
+
+def get_chapter_content(chapter_url,headers):#每一个章节内容
+    try:
+        req = urllib.request.Request(chapter_url, headers=headers)
+        rep = urllib.request.urlopen(req).read().decode('utf-8')
+        soup = BeautifulSoup(rep, 'html.parser')
+        content = soup.find(id='content').get_text()
+    except:
+      print(chapter_url,"无法下载——————")
+
     return content
 
 
@@ -102,5 +108,5 @@ def get_chapter_content(chapter_url,headers):#每一个章节内容
 
 if __name__ == '__main__':
 
-        #print(book_id,book_type)
+    #print(book_id,book_type)
     get_alltype_page(url,header)
