@@ -1,0 +1,84 @@
+# ip代理设置
+import requests
+from bs4 import BeautifulSoup
+import re
+import pymysql
+from multiprocessing import Process
+
+
+
+class sql(object):
+    conn = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="123456",
+        db="proxy",
+        port=3306,
+        charset='utf8')
+    def add_proxy(self,type,proxy):
+        cur = self.conn.cursor()
+        cur.execute("insert into proxy(type,proxy) values('%s','%s')"%(type,proxy))#执行sql语句
+        cur.close()
+        self.conn.commit()
+
+mysql = sql()
+url = 'https://www.kuaidaili.com/free/inha/1/'
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36'}
+
+#获取所有的网页链接
+def get_web_pages(url, headers):
+    resposed = requests.get(url,headers)
+    if resposed.status_code == 200:
+        links = re.findall('<li><a href="/free/inha/\d+/">(\d+)</a></li><li>页</li>',resposed.text,re.S)
+        if links:
+            max_page = links[0]
+            for i in range(1,int(max_page)):
+                yield 'https://www.kuaidaili.com/free/inha/%d/' %i
+
+#获取网页上所有的IP信息
+def get_web(url, headers):
+    #print("正在爬取",url)
+    resposed = requests.get(url, headers)
+    if resposed.status_code == 200:
+        soup = BeautifulSoup(resposed.text,'html.parser')
+        for ips in soup.find_all('tr'):
+            ip  = ips.find_all(attrs={'data-title':"IP"})
+            ip_port = ips.find_all(attrs={'data-title':"PORT"})
+            ip_type = ips.find_all(attrs={'data-title':"类型"})
+            if ip:
+                ip = ip[0].string
+                ip_type = ip_type[0].string
+                ip_port = ip_port[0].string
+                yield {'IP':ip,'IP_TYPE':ip_type,'IP_PORT':ip_port}
+
+#生成用于检查爬取的IP是否可以使用
+def shengcheng(ip,headers):
+    proxy = {ip['IP_TYPE']:'http://'+ip['IP']+":"+ip['IP_PORT']}
+    return proxy
+
+#检查ip是否可用
+def check(proxy,headers):
+    resposed = requests.get('http://www.baidu.com',proxies=proxy)
+    if  resposed.status_code == 200:
+        print("代理ip是可用的"+ str(proxy))
+        return proxy
+    else:
+        print("代理ip不可用"+ str(proxy))
+
+
+def main():
+    for page_url in get_web_pages(url, headers):
+        for name in get_web(page_url, headers):
+            proxy = shengcheng(name, headers)
+            available_proxy = check(proxy, headers)  # 得到可用的ip
+            for k in available_proxy.keys():
+                for v in available_proxy.values():
+                    mysql.add_proxy(k, v)
+
+
+
+if __name__ == '__main__':
+    main()
+
+                    #print(k,v)
