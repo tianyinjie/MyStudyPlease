@@ -3,7 +3,8 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import pymysql
-from multiprocessing import Process
+from multiprocessing import Pool
+import os
 
 
 
@@ -61,24 +62,28 @@ def shengcheng(ip,headers):
 def check(proxy,headers):
     resposed = requests.get('http://www.baidu.com',proxies=proxy)
     if  resposed.status_code == 200:
-        print("代理ip是可用的"+ str(proxy))
+        #print("代理ip是可用的"+ str(proxy))
         return proxy
     else:
         print("代理ip不可用"+ str(proxy))
 
 
-def main():
-    for page_url in get_web_pages(url, headers):
-        for name in get_web(page_url, headers):
-            proxy = shengcheng(name, headers)
-            available_proxy = check(proxy, headers)  # 得到可用的ip
-            for k in available_proxy.keys():
-                for v in available_proxy.values():
-                    mysql.add_proxy(k, v)
+def main(page_url, headers):
+    print('Task %s (pid=%s) (pid=%s) is running...' % (page_url,os.getpid(),os.getppid()))
+    for name in get_web(page_url, headers):
+        proxy = shengcheng(name, headers)
+        available_proxy = check(proxy, headers)  # 得到可用的ip
+        for k in available_proxy.keys():
+             for v in available_proxy.values():
+                 mysql.add_proxy(k, v)
 
 
 
 if __name__ == '__main__':
-    main()
-
-                    #print(k,v)
+    #多进程
+    p = Pool()
+    for page_url in get_web_pages(url, headers):
+        p.apply_async(main,args=(page_url, headers))
+    p.close()
+    p.join()
+    #print(k,v)
